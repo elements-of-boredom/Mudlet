@@ -235,6 +235,11 @@ public:
     Qt::CheckState getWideAmbiguousEAsianGlyphsControlState() { return mAutoAmbigousWidthGlyphsSetting ? Qt::PartiallyChecked : (mWideAmbigousWidthGlyphs ? Qt::Checked : Qt::Unchecked); }
     bool getEnableBlinkText() const { return mEnableBlinkText; }
     void setEnableBlinkText(bool enable);
+    bool getTextEffectsEnabled() const { return mTextEffectsEnabled; }
+    void setTextEffectsEnabled(bool enable);
+    int getTextEffectLoops() const { return mTextEffectLoops; }
+    // 0 animates them for as long as they are on screen
+    void setTextEffectLoops(int loops);
     void setHaveColorSpaceId(const bool state) { mSGRCodeHasColSpaceId = state; }
     bool getHaveColorSpaceId() { return mSGRCodeHasColSpaceId; }
     void setMayRedefineColors(const bool state) { mServerMayRedefineColors = state; }
@@ -1198,6 +1203,8 @@ signals:
     void signal_changeIsAmbigousWidthGlyphsToBeWide(bool);
     // Tells TTextEdit instances for this profile whether to animate blinking text:
     void signal_changeEnableBlinkText(bool);
+    // Tells TTextEdit instances for this profile to repaint their text effects:
+    void signal_changeTextEffects();
     void profileSaveStarted();
     void profileSaveFinished();
     void signal_changeSpellDict(const QString&);
@@ -1450,6 +1457,9 @@ private:
 
     // Whether to animate blinking text (SGR codes 5 and 6) with a pulse effect
     bool mEnableBlinkText = false;
+
+    bool mTextEffectsEnabled = true;
+    int mTextEffectLoops = 0;
 
     // keeps track of all of the array writers we're currently operating with
     QHash<QString, std::shared_ptr<XMLexport>> writers;

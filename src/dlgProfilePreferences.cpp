@@ -874,6 +874,8 @@ void dlgProfilePreferences::buildShell()
     auto* pCard_captions = createCard(qsl("card_accessibilityText"));
     addCardRow(pCard_captions, label_blankLinesBehaviour, comboBox_blankLinesBehaviour);
     moveIntoCard(pCard_captions, {checkBox_enableBlinkText, checkBox_enableClosedCaption});
+    moveIntoCard(pCard_captions, {checkBox_enableTextEffects});
+    addCardRow(pCard_captions, label_textEffectLoops, comboBox_textEffectLoops);
     auto* pCard_keyboard = createCard(qsl("card_accessibilityKeyboard"));
     addCardRow(pCard_keyboard, label_caretModeKey, comboBox_caretModeKey);
     moveIntoCard(pCard_keyboard, {checkBox_f3SearchEnabled});
@@ -3630,6 +3632,9 @@ void dlgProfilePreferences::disableHostDetails()
     checkBox_advertiseScreenReader->setEnabled(false);
     checkBox_enableClosedCaption->setEnabled(false);
     checkBox_enableBlinkText->setEnabled(false);
+    checkBox_enableTextEffects->setEnabled(false);
+    label_textEffectLoops->setEnabled(false);
+    comboBox_textEffectLoops->setEnabled(false);
     checkBox_f3SearchEnabled->setEnabled(false);
     comboBox_blankLinesBehaviour->setEnabled(false);
     comboBox_caretModeKey->setEnabled(false);
@@ -3754,6 +3759,9 @@ void dlgProfilePreferences::enableHostDetails()
     checkBox_advertiseScreenReader->setEnabled(true);
     checkBox_enableClosedCaption->setEnabled(true);
     checkBox_enableBlinkText->setEnabled(true);
+    checkBox_enableTextEffects->setEnabled(true);
+    label_textEffectLoops->setEnabled(true);
+    comboBox_textEffectLoops->setEnabled(true);
     checkBox_f3SearchEnabled->setEnabled(true);
     comboBox_blankLinesBehaviour->setEnabled(true);
     comboBox_caretModeKey->setEnabled(true);
@@ -4026,6 +4034,20 @@ void dlgProfilePreferences::initWithHost(Host* pHost)
     connect(checkBox_f3SearchEnabled, &QCheckBox::toggled, pHost, &Host::setF3SearchEnabled, Qt::UniqueConnection);
 
     checkBox_enableBlinkText->setChecked(pHost->getEnableBlinkText());
+    checkBox_enableTextEffects->setChecked(pHost->getTextEffectsEnabled());
+    comboBox_textEffectLoops->clear();
+    //: How long an animated text effect plays, in Preferences > Accessibility
+    comboBox_textEffectLoops->addItem(tr("forever"), 0);
+    //: How long an animated text effect plays, in Preferences > Accessibility
+    comboBox_textEffectLoops->addItem(tr("once"), 1);
+    //: How long an animated text effect plays, in Preferences > Accessibility
+    comboBox_textEffectLoops->addItem(tr("3 times"), 3);
+    if (const int loops = pHost->getTextEffectLoops(); comboBox_textEffectLoops->findData(loops) < 0) {
+        // Set by a script to a count the list does not offer
+        //: How long an animated text effect plays, in Preferences > Accessibility
+        comboBox_textEffectLoops->addItem(tr("%n time(s)", nullptr, loops), loops);
+    }
+    comboBox_textEffectLoops->setCurrentIndex(comboBox_textEffectLoops->findData(pHost->getTextEffectLoops()));
 
     // same with special connection warnings
     need_reconnect_for_specialoption->hide();
@@ -5042,6 +5064,8 @@ void dlgProfilePreferences::clearHostDetails()
     checkBox_advertiseScreenReader->setChecked(false);
     checkBox_enableClosedCaption->setChecked(false);
     checkBox_enableBlinkText->setChecked(false);
+    checkBox_enableTextEffects->setChecked(false);
+    comboBox_textEffectLoops->clear();
     comboBox_blankLinesBehaviour->setCurrentIndex(0);
 
     groupBox_ssl_certificate->hide();
@@ -6772,6 +6796,12 @@ void dlgProfilePreferences::applyAll()
         }
         if (mSnapshot.dirty(checkBox_enableBlinkText)) {
             pHost->setEnableBlinkText(checkBox_enableBlinkText->isChecked());
+        }
+        if (mSnapshot.dirty(checkBox_enableTextEffects)) {
+            pHost->setTextEffectsEnabled(checkBox_enableTextEffects->isChecked());
+        }
+        if (mSnapshot.dirty(comboBox_textEffectLoops) && comboBox_textEffectLoops->currentIndex() >= 0) {
+            pHost->setTextEffectLoops(comboBox_textEffectLoops->currentData().toInt());
         }
         if (mSnapshot.dirty(code_editor_theme_selection_combobox)) {
             if (MudletApp::darkMode()) {

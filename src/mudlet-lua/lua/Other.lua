@@ -1330,6 +1330,7 @@ function getConfig(...)
       "enableMXP",
       "enableNAWS",
       "enableNEWENVIRON",
+      "enableTextEffects",
       "f3SearchEnabled",
       "fixUnnecessaryLinebreaks",
       "forceNewEnvironNegotiationOff",
@@ -1366,6 +1367,7 @@ function getConfig(...)
       "specialForceGAOff",
       "specialForceMxpNegotiationOff",
       "specialForceMXPProcessorOn",      -- read-only in getConfig
+      "textEffectLoops",
       "undoServerWrap",
       "undoServerWrapWidth",
       "versionInTTYPE",

@@ -4530,6 +4530,22 @@ void Host::setEnableBlinkText(const bool enable)
     }
 }
 
+void Host::setTextEffectsEnabled(const bool enable)
+{
+    if (mTextEffectsEnabled != enable) {
+        mTextEffectsEnabled = enable;
+        emit signal_changeTextEffects();
+    }
+}
+
+void Host::setTextEffectLoops(const int loops)
+{
+    if (mTextEffectLoops != loops) {
+        mTextEffectLoops = loops;
+        emit signal_changeTextEffects();
+    }
+}
+
 void Host::setWideAmbiguousEAsianGlyphs(const Qt::CheckState state)
 {
     bool localState = false;

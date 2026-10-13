@@ -934,6 +934,9 @@ void XMLimport::readHost(Host* pHost)
     }
 
     pHost->setEnableBlinkText(attributes().value(qsl("mEnableBlinkText")) == qsl("yes"));
+    // Absent from profiles saved before text effects existed, which should still show them
+    pHost->setTextEffectsEnabled(attributes().value(qsl("mTextEffects")) != qsl("no"));
+    pHost->setTextEffectLoops(qMax(0, attributes().value(qsl("mTextEffectLoops")).toInt()));
 
     if (attributes().hasAttribute("logFileNameFormat")) {
         // We previously mixed "yyyy-MM-dd{#|T}hh-MM-ss" with "yyyy-MM-dd{#|T}HH-MM-ss"

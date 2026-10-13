@@ -4743,6 +4743,36 @@ you can use it but there could be issues with aligning columns of text</string>
             </property>
            </widget>
           </item>
+          <item row="7" column="0" colspan="2">
+           <widget class="QCheckBox" name="checkBox_enableTextEffects">
+            <property name="toolTip">
+             <string>&lt;p&gt;When enabled, text that scripts mark with an effect (setTextEffect, or the &amp;lt;fx:&amp;gt; tags of cecho, decho and hecho) is animated - lightning, fire, vines and so on. When disabled, that text is shown plainly.&lt;/p&gt;</string>
+            </property>
+            <property name="accessibleDescription">
+             <string>When enabled, text that scripts mark with an effect is animated. When disabled, that text is shown plainly.</string>
+            </property>
+            <property name="text">
+             <string>Enable text effects</string>
+            </property>
+           </widget>
+          </item>
+          <item row="8" column="0">
+           <widget class="QLabel" name="label_textEffectLoops">
+            <property name="text">
+             <string>Animate text effects:</string>
+            </property>
+            <property name="buddy">
+             <cstring>comboBox_textEffectLoops</cstring>
+            </property>
+           </widget>
+          </item>
+          <item row="8" column="1">
+           <widget class="QComboBox" name="comboBox_textEffectLoops">
+            <property name="toolTip">
+             <string>&lt;p&gt;How long a text effect plays once its text appears. After its last loop it fades away, leaving the text as it was.&lt;/p&gt;</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>
@@ -5680,6 +5710,8 @@ you can use it but there could be issues with aligning columns of text</string>
   <tabstop>comboBox_caretModeKey</tabstop>
   <tabstop>checkBox_f3SearchEnabled</tabstop>
   <tabstop>checkBox_enableBlinkText</tabstop>
+  <tabstop>checkBox_enableTextEffects</tabstop>
+  <tabstop>comboBox_textEffectLoops</tabstop>
   <tabstop>mFORCE_MCCP_OFF</tabstop>
   <tabstop>mFORCE_GA_OFF</tabstop>
   <tabstop>checkBox_mForceMXPProcessorOn</tabstop>

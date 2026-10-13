@@ -6991,6 +6991,23 @@ bool TBuffer::applyEffect(const QPoint& P_begin, const QPoint& P_end, const int 
     return true;
 }
 
+qreal TBuffer::textEffectStart(const int line, const int run, const qreal now)
+{
+    constexpr int runBits = 16;
+    const qint64 key = ((mLinesRemovedTotal + line) << runBits) | std::min(run, (1 << runBits) - 1);
+    if (const auto it = mTextEffectStarts.constFind(key); it != mTextEffectStarts.cend()) {
+        return it.value();
+    }
+    if (mTextEffectStarts.size() >= 4096) {
+        const qint64 firstLiveKey = mLinesRemovedTotal << runBits;
+        mTextEffectStarts.removeIf([firstLiveKey](const auto& entry) {
+            return entry.key() < firstLiveKey;
+        });
+    }
+    mTextEffectStarts.insert(key, now);
+    return now;
+}
+
 bool TBuffer::applyFgColor(const QPoint& P_begin, const QPoint& P_end, const QColor& newColor)
 {
     const int x1 = P_begin.x();

@@ -69,65 +69,6 @@ qreal TTextEffect::seconds()
     return clock.nsecsElapsed() / 1e9;
 }
 
-// Each mote is a pure function of its slot and the time rather than state kept
-// between frames, so a partial repaint, a scroll or a second view of the same
-// line all agree on where it is.
-void TTextEffect::paintLifedrain(QPainter& painter, const Span& text, const qreal seconds)
-{
-    const QRect& span = text.rect;
-    const QColor& color = text.color;
-    const quint32 seed = text.seed;
-    const qreal h = span.height();
-    if (h <= 0 || span.width() <= 0) {
-        return;
-    }
-    const int moteCount = std::max(2, qRound(span.width() / (h * 0.45)));
-    const QColor glow = color.lighter(140);
-    const QColor core = QColor::fromRgbF((glow.redF() + 2.0) / 3.0, (glow.greenF() + 2.0) / 3.0, (glow.blueF() + 2.0) / 3.0);
-
-    painter.save();
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.setPen(Qt::NoPen);
-    for (int slot = 0; slot < moteCount; ++slot) {
-        const qreal lifetime = 1.4 + 0.9 * random01(seed, slot, 1);
-        const qreal period = lifetime + 0.2 + 1.2 * random01(seed, slot, 2);
-        const qreal local = seconds + period * random01(seed, slot, 3);
-        const auto cycle = static_cast<quint32>(std::floor(local / period));
-        const qreal age = local - cycle * period;
-        if (age >= lifetime) {
-            continue;
-        }
-        const qreal f = age / lifetime;
-        const qreal r1 = random01(seed, slot, cycle, 4);
-        const qreal r2 = random01(seed, slot, cycle, 5);
-        const qreal r3 = random01(seed, slot, cycle, 6);
-        const qreal r4 = random01(seed, slot, cycle, 7);
-
-        // Slow to leave the letter, then pulled away ever faster
-        const qreal pull = std::pow(f, 1.7);
-        const qreal x = span.left() + r1 * span.width() + (0.5 + 1.7 * r3) * h * pull + std::sin(age * 5.0 + r1 * 6.2832) * 0.15 * h * f;
-        const qreal y = span.top() + h * (0.3 + 0.45 * r2) - (1.2 + 2.0 * r4) * h * pull;
-        const qreal alpha = std::min(1.0, f / 0.15) * std::pow(1.0 - f, 1.2);
-        const qreal radius = h * (0.07 + 0.05 * r2) * (1.0 - 0.5 * f);
-
-        QRadialGradient halo(QPointF(x, y), radius * 3.0);
-        QColor inner = glow;
-        inner.setAlphaF(0.55 * alpha);
-        QColor outer = glow;
-        outer.setAlphaF(0.0);
-        halo.setColorAt(0.0, inner);
-        halo.setColorAt(1.0, outer);
-        painter.setBrush(halo);
-        painter.drawEllipse(QPointF(x, y), radius * 3.0, radius * 3.0);
-
-        QColor dot = core;
-        dot.setAlphaF(alpha);
-        painter.setBrush(dot);
-        painter.drawEllipse(QPointF(x, y), radius, radius);
-    }
-    painter.restore();
-}
-
 namespace {
 // A jagged bolt from a to b by midpoint displacement, each level kinking it
 // less than the one before, as forked lightning does
@@ -156,7 +97,7 @@ QPolygonF bolt(const QPointF& a, const QPointF& b, const quint32 seed, const qui
 
 // Strands are redrawn elsewhere on every tick of a coarse clock, which is what
 // makes them crackle rather than glide
-void TTextEffect::paintLightning(QPainter& painter, const Span& text, const qreal seconds)
+void TTextEffect::paintBolt(QPainter& painter, const Span& text, const qreal seconds)
 {
     const QRect& span = text.rect;
     const QColor& color = text.color;
@@ -377,9 +318,10 @@ void glow(QPainter& painter, const Span& text, const QColor& color, const qreal 
     const QImage image = glowImage(text, color, std::max(1, qRound(radius)), &origin);
     painter.save();
     painter.setCompositionMode(QPainter::CompositionMode_Plus);
+    const qreal opacity = painter.opacity();
     // Past 1 the halo is laid down again, thickening it
     for (qreal left = strength; left > 0.0; left -= 1.0) {
-        painter.setOpacity(std::min(1.0, left));
+        painter.setOpacity(opacity * std::min(1.0, left));
         painter.drawImage(origin, image);
     }
     painter.restore();
@@ -412,12 +354,12 @@ void redraw(QPainter& painter, const Span& text, const QBrush& brush, const std:
 }
 
 // The letters drawn again on top, as they are, so a strong glow does not wash them out
-void overdraw(QPainter& painter, const Span& text, const QColor& color)
+void overdraw(QPainter& painter, const Span& text, const QBrush& brush)
 {
     painter.save();
     painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
     painter.setFont(text.font);
-    painter.setPen(color);
+    painter.setPen(QPen(brush, 1));
     for (const auto& letter : text.letters) {
         painter.drawText(letter.rect, Qt::AlignCenter, letter.text);
     }
@@ -630,54 +572,76 @@ void honeycomb(QPainter& painter, const Span& text, const qreal t, const QColor&
     }
 }
 
-void paintFire(QPainter& painter, const Span& text, const qreal t)
+void paintFlame(QPainter& painter, const Span& text, const qreal t)
 {
     const qreal h = text.rect.height();
     const qreal flicker = 0.85 + 0.15 * drift(text.seed, 1, t * 7.0);
+    // The letters are charred whatever their colour, which frees it to colour the
+    // fire: the whole palette is turned round to the text's hue. Reds, oranges,
+    // yellows and anything without a clear hue keep the ordinary orange fire.
+    const qreal hue = text.color.hsvHueF();
+    const bool ordinary = text.color.hsvSaturationF() < 0.25 || hue < 0 || hue < 60.0 / 360.0 || hue >= 330.0 / 360.0;
+    const qreal shift = ordinary ? 0.0 : hue - 20.0 / 360.0;
+    auto fire = [shift](const QColor& colour) {
+        if (shift == 0.0) {
+            return colour;
+        }
+        const qreal turned = std::fmod(colour.hsvHueF() + shift + 1.0, 1.0);
+        return QColor::fromHsvF(turned, colour.hsvSaturationF(), colour.valueF(), colour.alphaF());
+    };
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setCompositionMode(QPainter::CompositionMode_Plus);
     painter.setPen(Qt::NoPen);
     // Tongues of flame licking up off the letters
-    for (size_t i = 0; i < text.letters.size(); ++i) {
-        const QRect& cell = text.letters[i].rect;
-        for (int k = 0; k < 2; ++k) {
-            const quint32 slot = static_cast<quint32>(i) * 2 + k;
-            const Life life = lifeOf(text.seed ^ 0xf1, slot, t, 0.55, 0.15);
-            if (!life.alive) {
-                continue;
-            }
-            const qreal x = cell.left() + cell.width() * (0.2 + 0.6 * random01(text.seed, 2, slot, life.generation));
-            const qreal base = cell.top() + h * 0.4;
-            const qreal height = h * (0.35 + 0.35 * random01(text.seed, 3, slot, life.generation)) * std::sin(M_PI * life.fraction);
-            const qreal width = cell.width() * 0.55;
-            const qreal sway = std::sin(t * 9.0 + i) * h * 0.06;
-            QPainterPath tongue;
-            tongue.moveTo(x - width / 2, base);
-            tongue.quadTo(x - width * 0.35 + sway, base - height * 0.6, x + sway * 2, base - height);
-            tongue.quadTo(x + width * 0.35 + sway, base - height * 0.6, x + width / 2, base);
-            tongue.closeSubpath();
-            QLinearGradient heat(x, base, x, base - height);
-            heat.setColorAt(0.0, QColor(255, 170, 40, 150));
-            heat.setColorAt(1.0, QColor(255, 40, 0, 0));
-            painter.setBrush(heat);
-            painter.drawPath(tongue);
+    for (size_t i = 0; i < text.letters.size() * 2; ++i) {
+        const QRect& cell = text.letters[i / 2].rect;
+        const auto slot = static_cast<quint32>(i);
+        const Life life = lifeOf(text.seed ^ 0xf1, slot, t, 0.55, 0.15);
+        if (!life.alive) {
+            continue;
         }
+        const qreal x = cell.left() + cell.width() * (0.2 + 0.6 * random01(text.seed, 2, slot, life.generation));
+        const qreal base = cell.top() + h * 0.4;
+        const qreal height = h * (0.35 + 0.35 * random01(text.seed, 3, slot, life.generation)) * std::sin(M_PI * life.fraction);
+        const qreal width = cell.width() * 0.55;
+        const qreal sway = std::sin(t * 9.0 + i) * h * 0.06;
+        QPainterPath tongue;
+        tongue.moveTo(x - width / 2, base);
+        tongue.quadTo(x - width * 0.35 + sway, base - height * 0.6, x + sway * 2, base - height);
+        tongue.quadTo(x + width * 0.35 + sway, base - height * 0.6, x + width / 2, base);
+        tongue.closeSubpath();
+        QLinearGradient heat(x, base, x, base - height);
+        heat.setColorAt(0.0, fire(QColor(255, 170, 40, 150)));
+        heat.setColorAt(1.0, fire(QColor(255, 40, 0, 0)));
+        painter.setBrush(heat);
+        painter.drawPath(tongue);
     }
-    glow(painter, text, QColor(255, 90, 0), h * 0.4, 3.5 * flicker);
-    glow(painter, text, QColor(255, 220, 70), h * 0.12, 2.6 * flicker);
-    overdraw(painter, text, text.color);
-    risingDots(painter, text, t, QColor(255, 150, 40), std::max(2, static_cast<int>(text.letters.size()) / 2 + 1), 1.6, 0.06, 0xe1);
+    glow(painter, text, fire(QColor(255, 90, 0)), h * 0.4, 2.2 * flicker);
+    glow(painter, text, fire(QColor(255, 220, 70)), h * 0.12, 1.2 * flicker);
+    // Charred letters, a dull ember red smouldering at their feet, standing out
+    // as silhouettes against the fire instead of sinking into it
+    QLinearGradient hot(0, text.rect.bottom(), 0, text.rect.top());
+    hot.setColorAt(0.0, fire(QColor(120, 30, 5)));
+    hot.setColorAt(0.45, fire(QColor(45, 12, 4)));
+    hot.setColorAt(1.0, fire(QColor(20, 8, 4)));
+    overdraw(painter, text, hot);
+    risingDots(painter, text, t, fire(QColor(255, 150, 40)), std::max(2, static_cast<int>(text.letters.size()) / 2 + 1), 1.6, 0.06, 0xe1);
     painter.restore();
 }
 
-void paintCold(QPainter& painter, const Span& text, const qreal t)
+void paintFrost(QPainter& painter, const Span& text, const qreal t)
 {
     const qreal h = text.rect.height();
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
-    glow(painter, text, text.color, h * 0.3, 1.7);
-    overdraw(painter, text, text.color);
+    glow(painter, text, blend(text.color, QColor(170, 230, 255), 0.6), h * 0.3, 0.8);
+    // Frosted over: nearly white at the top of each letter, the text's own colour
+    // paled beneath, so they do not sit as a saturated blot inside the glow
+    QLinearGradient frosted(0, text.rect.top(), 0, text.rect.bottom());
+    frosted.setColorAt(0.0, QColor(240, 250, 255));
+    frosted.setColorAt(1.0, blend(text.color, QColor(225, 245, 255), 0.65));
+    overdraw(painter, text, frosted);
     // Frost crystals forming around the letters and slowly sinking
     const QColor ice = blend(text.color, Qt::white, 0.35);
     painter.setPen(Qt::NoPen);
@@ -706,7 +670,7 @@ void paintCold(QPainter& painter, const Span& text, const qreal t)
     painter.restore();
 }
 
-void paintAcid(QPainter& painter, const Span& text, const qreal t)
+void paintDrip(QPainter& painter, const Span& text, const qreal t)
 {
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
@@ -716,7 +680,7 @@ void paintAcid(QPainter& painter, const Span& text, const qreal t)
     painter.restore();
 }
 
-void paintMagic(QPainter& painter, const Span& text, const qreal t)
+void paintSparkle(QPainter& painter, const Span& text, const qreal t)
 {
     const qreal h = text.rect.height();
     painter.save();
@@ -729,7 +693,7 @@ void paintMagic(QPainter& painter, const Span& text, const qreal t)
     painter.restore();
 }
 
-void paintPoison(QPainter& painter, const Span& text, const qreal t)
+void paintFumes(QPainter& painter, const Span& text, const qreal t)
 {
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
@@ -739,8 +703,10 @@ void paintPoison(QPainter& painter, const Span& text, const qreal t)
     painter.restore();
 }
 
-void paintDrain(QPainter& painter, const Span& text, const qreal t, const QColor& streak)
+void paintStreak(QPainter& painter, const Span& text, const qreal t)
 {
+    // The text's own hue at full brightness, so that dark text still throws visible streaks
+    const QColor streak = QColor::fromHsvF(text.color.hsvHueF(), text.color.hsvSaturationF(), std::max(0.92f, text.color.valueF()));
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
     glow(painter, text, text.color, text.rect.height() * 0.3, 1.4);
@@ -749,7 +715,7 @@ void paintDrain(QPainter& painter, const Span& text, const qreal t, const QColor
     painter.restore();
 }
 
-void paintDarkness(QPainter& painter, const Span& text, const qreal t)
+void paintShadow(QPainter& painter, const Span& text, const qreal t)
 {
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
@@ -761,7 +727,7 @@ void paintDarkness(QPainter& painter, const Span& text, const qreal t)
     painter.restore();
 }
 
-void paintLight(QPainter& painter, const Span& text, const qreal t)
+void paintRays(QPainter& painter, const Span& text, const qreal t)
 {
     const qreal h = text.rect.height();
     painter.save();
@@ -792,7 +758,7 @@ void paintLight(QPainter& painter, const Span& text, const qreal t)
     painter.restore();
 }
 
-void paintWind(QPainter& painter, const Span& text, const qreal t)
+void paintSway(QPainter& painter, const Span& text, const qreal t)
 {
     const qreal h = text.rect.height();
     const qreal cell = text.letters.empty() ? h * 0.5 : text.letters.front().rect.width();
@@ -820,7 +786,7 @@ void paintWind(QPainter& painter, const Span& text, const qreal t)
     painter.restore();
 }
 
-void paintWater(QPainter& painter, const Span& text, const qreal t)
+void paintRipple(QPainter& painter, const Span& text, const qreal t)
 {
     const qreal h = text.rect.height();
     painter.save();
@@ -831,32 +797,6 @@ void paintWater(QPainter& painter, const Span& text, const qreal t)
     glow(painter, text, text.color, h * 0.25, 0.8);
     overdraw(painter, text, blend(text.color, Qt::white, 0.3));
     risingRings(painter, text, t, QColor(150, 170, 255), static_cast<int>(text.letters.size()) / 2 + 2, 1.0, 1.4, 0.11, 0x22);
-    painter.restore();
-}
-
-void paintEnergy(QPainter& painter, const Span& text, const qreal t)
-{
-    const qreal h = text.rect.height();
-    const qreal pulse = 0.65 + 0.35 * std::sin(t * 5.0);
-    painter.save();
-    painter.setRenderHint(QPainter::Antialiasing);
-    glow(painter, text, text.color, h * 0.32, 1.3 * pulse);
-    glow(painter, text, text.color, h * 0.1, 1.0);
-    overdraw(painter, text, text.color);
-    // Tiny arcs crackling inside the letters
-    const auto tick = static_cast<quint32>(t / 0.06);
-    painter.setCompositionMode(QPainter::CompositionMode_Plus);
-    for (int s = 0; s < 3; ++s) {
-        if (text.letters.empty()) {
-            break;
-        }
-        const size_t letter = static_cast<size_t>(random01(text.seed, tick, s, 80) * text.letters.size());
-        const QRectF cell = text.letters[letter].rect;
-        const QPointF a(cell.left() + cell.width() * random01(text.seed, tick, s, 81), cell.top() + h * (0.25 + 0.5 * random01(text.seed, tick, s, 82)));
-        const QPointF b(cell.left() + cell.width() * random01(text.seed, tick, s, 83), cell.top() + h * (0.25 + 0.5 * random01(text.seed, tick, s, 84)));
-        painter.setPen(roundPen(QColor(255, 230, 255, 230), 1.0));
-        painter.drawPolyline(bolt(a, b, text.seed ^ tick, s, 0.35));
-    }
     painter.restore();
 }
 
@@ -896,44 +836,33 @@ void tendril(QPainter& painter, const QPointF& at, const qreal size, const qreal
     painter.drawPath(curl);
 }
 
-// A vine wound around the words like a helix: the turns behind are drawn
-// before the letters go back over them, the turns in front after. Nothing
-// about it is regular - the twist, the reach, the girth and where leaves
-// grow all wander along its length, fixed by the span's seed.
-void paintWood(QPainter& painter, const Span& text, const qreal t)
+// A vine creeping along under the words, the twine wound loosely round its
+// stem and the leaves hanging below, so it never covers the letters. Its
+// waviness, girth and where leaves grow wander along it, fixed by the seed.
+void paintVine(QPainter& painter, const Span& text, const qreal t)
 {
     const qreal h = text.rect.height();
-    const qreal left = text.rect.left() - h * 0.5;
-    const qreal right = text.rect.right() + h * 0.5;
-    const qreal middle = QRectF(text.rect).center().y();
+    const qreal left = text.rect.left() - h * 0.3;
+    const qreal right = text.rect.right() + h * 0.3;
+    const qreal base = text.rect.bottom() - h * 0.04;
     const quint32 seed = text.seed;
     auto wave = [&](const qreal x, const quint32 salt, const qreal scale) {
         return std::sin(x / (h * scale) + tau * random01(seed, salt));
     };
-    // The twist: tight in places, long and lazy in others
-    auto twist = [&](const qreal x, const qreal offset) {
-        const qreal u = x - left;
-        // The slow writhing: coils drifting along, tightening and loosening
-        return tau * u / (h * 2.6) + 1.3 * wave(x, 1, 2.9) + 0.6 * wave(x, 2, 1.3) + offset + 0.45 * std::sin(t * 0.6 + u / (h * 1.4)) + 0.25 * std::sin(t * 1.1 - u / (h * 0.8));
-    };
-    auto reachAt = [&](const qreal x) {
-        return h * (0.62 + 0.22 * wave(x, 3, 2.1) + 0.08 * wave(x, 4, 0.9) + 0.1 * std::sin(t * 0.8 + x / (h * 1.5)));
-    };
-    auto heightAt = [&](const qreal x, const qreal offset, const qreal scale) {
-        return middle + h * 0.12 * std::sin(x / (h * 3.7) + tau * random01(seed, 5) + t * 0.5) + std::sin(twist(x, offset)) * reachAt(x) * scale;
+    auto stemAt = [&](const qreal x) {
+        return base + h * (0.05 * wave(x, 1, 1.7) + 0.03 * wave(x, 2, 0.6) + 0.03 * std::sin(t * 0.9 + x / (h * 1.3)));
     };
     auto taper = [&](const qreal x) {
-        return std::clamp(std::min(x - left, right - x) / (h * 0.8), 0.25, 1.0);
+        return std::clamp(std::min(x - left, right - x) / (h * 0.8), 0.3, 1.0);
     };
-
-    auto strand = [&](const bool front, const qreal offset, const qreal scale, const QColor& colour, const QColor& highlight, const qreal width, const quint32 salt) {
+    auto strand = [&](const qreal phase, const qreal reach, const QColor& colour, const QColor& highlight, const qreal width, const quint32 salt) {
         QPointF previous;
         bool havePrevious = false;
         for (qreal x = left; x <= right; x += 1.5) {
-            const QPointF point(x, heightAt(x, offset, scale));
-            const bool inFront = std::cos(twist(x, offset)) > 0.0;
-            if (havePrevious && inFront == front) {
-                const qreal girth = width * taper(x) * (0.8 + 0.25 * wave(x, salt, 0.7) + 0.15 * wave(x, salt + 1, 0.23));
+            const qreal coil = tau * (x - left) / (h * 1.6) + 0.8 * wave(x, salt, 1.9) + phase + t * 0.7;
+            const QPointF point(x, stemAt(x) + std::sin(coil) * reach);
+            if (havePrevious) {
+                const qreal girth = width * taper(x) * (0.85 + 0.2 * wave(x, salt + 1, 0.7));
                 painter.setPen(roundPen(colour, std::max(1.0, girth)));
                 painter.drawLine(previous, point);
                 if (highlight.isValid()) {
@@ -945,66 +874,28 @@ void paintWood(QPainter& painter, const Span& text, const qreal t)
             havePrevious = true;
         }
     };
-    // Leaves at uneven spacing, sometimes in pairs, only where the vine is
-    // clear of the letters, pointing away from them
-    auto leaves = [&](const bool front) {
-        int index = 0;
-        for (qreal x = left + h * 0.3; x <= right - h * 0.2; x += h * (0.25 + 0.6 * random01(seed, 41, index)), ++index) {
-            const qreal y = heightAt(x, 0.0, 1.0);
-            // Grown in as the vine swings clear of the letters, rather than popping in
-            const qreal clear = std::clamp((std::abs(y - middle) - h * 0.3) / (h * 0.2), 0.0, 1.0);
-            if (clear <= 0.0 || (std::cos(twist(x, 0.0)) > 0.0) != front || random01(seed, 42, index) < 0.15) {
-                continue;
-            }
-            const qreal outward = y < middle ? 0.0 : 180.0;
-            const int count = random01(seed, 43, index) < 0.3 ? 2 : 1;
-            for (int k = 0; k < count; ++k) {
-                const qreal lean = (random01(seed, 44, index * 2 + k) - 0.5) * 110.0 + 18.0 * std::sin(t * (1.4 + random01(seed, 45, index)) + index);
-                leaf(painter, QPointF(x + k * h * 0.12, y), outward + lean, clear * h * (0.32 + 0.22 * random01(seed, 46, index * 2 + k)));
-            }
-        }
-    };
-    // Now and then a short woody twig with a leaf at its tip
-    auto twigs = [&](const bool front) {
-        int index = 0;
-        for (qreal x = left + h; x <= right - h * 0.5; x += h * (1.4 + 1.6 * random01(seed, 51, index)), ++index) {
-            const qreal y = heightAt(x, 0.0, 1.0);
-            const qreal clear = std::clamp((std::abs(y - middle) - h * 0.35) / (h * 0.2), 0.0, 1.0);
-            if (clear <= 0.0 || (std::cos(twist(x, 0.0)) > 0.0) != front) {
-                continue;
-            }
-            const qreal side = y < middle ? -1.0 : 1.0;
-            const QPointF end(x + (random01(seed, 52, index) - 0.3) * h * 0.6 + std::sin(t * 1.3 + index) * h * 0.08, y + side * clear * h * (0.25 + 0.2 * random01(seed, 53, index)));
-            painter.setPen(roundPen(QColor(95, 62, 30), std::max(1.0, h * 0.05)));
-            painter.drawLine(QPointF(x, y), end);
-            leaf(painter, end, (side < 0 ? 0.0 : 180.0) + (random01(seed, 54, index) - 0.5) * 60.0 + 15.0 * std::sin(t * 1.7 + index), clear * h * 0.28);
-        }
-    };
 
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setBrush(Qt::NoBrush);
-    const QColor bark(105, 68, 32);
-    const QColor barkLight(160, 112, 60);
-    const QColor twine(55, 140, 50);
     const qreal stem = std::max(2.0, h * 0.11);
-    const qreal tendrilPhase = M_PI * (0.4 + 0.5 * random01(seed, 6));
-    strand(false, 0.0, 1.0, bark.darker(130), QColor(), stem, 60);
-    strand(false, tendrilPhase, 0.8, twine.darker(130), QColor(), std::max(1.0, h * 0.045), 70);
-    twigs(false);
-    leaves(false);
-    overdraw(painter, text, text.color);
-    strand(true, tendrilPhase, 0.8, twine, QColor(), std::max(1.0, h * 0.045), 70);
-    strand(true, 0.0, 1.0, bark, barkLight, stem, 60);
-    twigs(true);
-    leaves(true);
-    // Wherever the vine does cross a letter, the letter still shows through
-    painter.setOpacity(0.55);
-    overdraw(painter, text, text.color);
-    painter.setOpacity(1.0);
+    strand(0.0, 0.0, QColor(105, 68, 32), QColor(160, 112, 60), stem, 60);
+    strand(M_PI * random01(seed, 6), h * 0.09, QColor(55, 140, 50), QColor(), std::max(1.2, h * 0.045), 70);
+    // Leaves at uneven spacing, hanging down and out from the stem
+    int index = 0;
+    for (qreal x = left + h * 0.4; x <= right - h * 0.3; x += h * (0.25 + 0.5 * random01(seed, 41, index)), ++index) {
+        if (random01(seed, 42, index) < 0.1) {
+            continue;
+        }
+        const qreal grow = 0.75 + 0.25 * std::sin(t * 0.8 + index * 1.7);
+        const qreal lean = (random01(seed, 44, index) < 0.5 ? -1.0 : 1.0) * (55.0 + 30.0 * random01(seed, 45, index)) + 12.0 * std::sin(t * 1.4 + index);
+        leaf(painter, QPointF(x, stemAt(x)), 180.0 + lean, grow * h * (0.38 + 0.17 * random01(seed, 46, index)));
+    }
     const qreal sway = 0.5 * std::sin(t * 1.5);
-    tendril(painter, QPointF(right, heightAt(right, 0.0, 1.0)), h * 0.35, 1.0, sway);
-    tendril(painter, QPointF(left, heightAt(left, 0.0, 1.0)), h * 0.3, -1.0, -sway);
+    tendril(painter, QPointF(right, stemAt(right)), h * 0.3, 1.0, sway);
+    tendril(painter, QPointF(left, stemAt(left)), h * 0.2, -1.0, -sway);
+    // Over any descender the stem passes behind
+    overdraw(painter, text, text.color);
     painter.restore();
 }
 
@@ -1027,7 +918,7 @@ QBrush sandBrush(const QColor& color)
     return QBrush(tile);
 }
 
-void paintEarth(QPainter& painter, const Span& text, const qreal t)
+void paintDust(QPainter& painter, const Span& text, const qreal t)
 {
     const qreal h = text.rect.height();
     painter.save();
@@ -1049,46 +940,7 @@ void paintEarth(QPainter& painter, const Span& text, const qreal t)
     painter.restore();
 }
 
-void paintToxic(QPainter& painter, const Span& text, const qreal t)
-{
-    painter.save();
-    painter.setRenderHint(QPainter::Antialiasing);
-    cloud(painter, text, t, blend(text.color, QColor(150, 60, 220), 0.4), 0.55, 0.9, 0.2);
-    overdraw(painter, text, text.color);
-    drips(painter, text, t, text.color, 2, 0.7, 0.24);
-    painter.restore();
-}
-
-void paintSilver(QPainter& painter, const Span& text, const qreal t)
-{
-    const qreal h = text.rect.height();
-    painter.save();
-    painter.setRenderHint(QPainter::Antialiasing);
-    // Polished metal: bright above and below a dark horizon band
-    QLinearGradient chrome(0, text.rect.top() + h * 0.15, 0, text.rect.bottom() - h * 0.15);
-    chrome.setColorAt(0.0, Qt::white);
-    chrome.setColorAt(0.44, blend(text.color, Qt::white, 0.7));
-    chrome.setColorAt(0.52, QColor(60, 60, 70));
-    chrome.setColorAt(0.65, blend(text.color, Qt::white, 0.2));
-    chrome.setColorAt(1.0, Qt::white);
-    redraw(painter, text, chrome);
-    glow(painter, text, Qt::white, h * 0.15, 0.6);
-    // A star glint hopping from letter to letter
-    painter.setCompositionMode(QPainter::CompositionMode_Plus);
-    constexpr qreal interval = 1.1;
-    const qreal local = t + interval * random01(text.seed, 12);
-    const auto hop = static_cast<quint32>(local / interval);
-    const qreal age = local - hop * interval;
-    if (age < 0.5 && !text.letters.empty()) {
-        const QRect& cell = text.letters[static_cast<size_t>(random01(text.seed, hop, 13) * text.letters.size())].rect;
-        const qreal grow = std::sin(M_PI * age / 0.5);
-        twinkle(painter, QPointF(cell.right(), cell.top() + h * 0.3), h * 0.7 * grow, Qt::white, grow);
-    }
-    twinkles(painter, text, t, QColor(230, 230, 255), 2, 0.2, 0x51);
-    painter.restore();
-}
-
-void paintPiercing(QPainter& painter, const Span& text, const qreal t)
+void paintNeedles(QPainter& painter, const Span& text, const qreal t)
 {
     const qreal h = text.rect.height();
     painter.save();
@@ -1117,7 +969,7 @@ void paintPiercing(QPainter& painter, const Span& text, const qreal t)
     painter.restore();
 }
 
-void paintPhysical(QPainter& painter, const Span& text, const qreal t)
+void paintImpact(QPainter& painter, const Span& text, const qreal t)
 {
     const qreal h = text.rect.height();
     constexpr qreal interval = 1.5;
@@ -1159,15 +1011,7 @@ void paintPhysical(QPainter& painter, const Span& text, const qreal t)
     painter.restore();
 }
 
-void paintBleeding(QPainter& painter, const Span& text, const qreal t)
-{
-    painter.save();
-    painter.setRenderHint(QPainter::Antialiasing);
-    drips(painter, text, t, blend(text.color, QColor(220, 20, 20), 0.5), 3, 0.8, 0.22);
-    painter.restore();
-}
-
-void paintSound(QPainter& painter, const Span& text, const qreal t)
+void paintWaves(QPainter& painter, const Span& text, const qreal t)
 {
     const qreal h = text.rect.height();
     painter.save();
@@ -1189,7 +1033,7 @@ void paintSound(QPainter& painter, const Span& text, const qreal t)
     painter.restore();
 }
 
-void paintMental(QPainter& painter, const Span& text, const qreal t)
+void paintWarp(QPainter& painter, const Span& text, const qreal t)
 {
     const qreal h = text.rect.height();
     const qreal cell = text.letters.empty() ? h * 0.5 : text.letters.front().rect.width();
@@ -1208,35 +1052,31 @@ struct KindInfo
     QStringList names;
     // How far it reaches past the text, in font heights: left, top, right, bottom
     qreal left, top, right, bottom;
+    // Seconds that count as one play through, for effects limited to a number of them
+    qreal loop;
 };
 
 const std::array<KindInfo, TTextEffect::KindCount>& kinds()
 {
     static const std::array<KindInfo, TTextEffect::KindCount> table{{
-            {{qsl("none")}, 0, 0, 0, 0},
-            {{qsl("lifedrain")}, 0.5, 3.8, 3.0, 0.5},
-            {{qsl("lightning"), qsl("shocking")}, 5, 4, 5, 2},
-            {{qsl("fire"), qsl("flaming")}, 0.6, 2.2, 0.6, 0.6},
-            {{qsl("cold"), qsl("freezing")}, 0.8, 0.8, 0.8, 0.8},
-            {{qsl("acid"), qsl("acidic")}, 0.4, 0.4, 0.4, 1.8},
-            {{qsl("magic"), qsl("arcane")}, 0.6, 1.2, 0.6, 1.4},
-            {{qsl("poison"), qsl("poisonous")}, 1.2, 1.4, 1.2, 1.2},
-            {{qsl("drain"), qsl("draining")}, 0.6, 2.0, 5.0, 0.6},
-            {{qsl("darkness"), qsl("unholy")}, 1.3, 1.4, 1.3, 1.3},
-            {{qsl("light"), qsl("radiant")}, 3.5, 3.5, 3.5, 3.5},
-            {{qsl("wind"), qsl("gusting")}, 2.0, 1.0, 3.0, 1.0},
-            {{qsl("water"), qsl("drenching")}, 1.2, 1.5, 1.2, 1.5},
-            {{qsl("energy"), qsl("energized")}, 0.6, 0.6, 0.6, 0.6},
-            {{qsl("manadrain")}, 0.6, 2.0, 5.0, 0.6},
-            {{qsl("wood"), qsl("overgrown"), qsl("vines")}, 1.6, 1.3, 1.6, 1.3},
-            {{qsl("earth"), qsl("earthen")}, 0.6, 0.6, 0.6, 1.8},
-            {{qsl("toxic"), qsl("diseased")}, 1.2, 1.2, 1.2, 1.8},
-            {{qsl("silver"), qsl("silvered")}, 0.8, 0.8, 0.8, 0.8},
-            {{qsl("piercing"), qsl("nonormal")}, 1.0, 2.2, 2.0, 1.2},
-            {{qsl("physical"), qsl("normal")}, 3.5, 3.0, 3.5, 3.0},
-            {{qsl("bleeding")}, 0.4, 0.4, 0.4, 2.0},
-            {{qsl("sound"), qsl("sonic"), qsl("soundwaves")}, 2.2, 1.4, 2.2, 1.4},
-            {{qsl("mental"), qsl("psionic")}, 0.8, 0.8, 0.8, 0.8},
+            {{qsl("none")}, 0, 0, 0, 0, 0},
+            {{qsl("bolt"), qsl("lightning"), qsl("shocking"), qsl("electric")}, 5, 4, 5, 2, 1.4},
+            {{qsl("flame"), qsl("fire"), qsl("flaming")}, 0.6, 2.2, 0.6, 0.6, 1.5},
+            {{qsl("frost"), qsl("cold"), qsl("freezing"), qsl("ice")}, 0.8, 0.8, 0.8, 0.8, 2.5},
+            {{qsl("drip"), qsl("acid"), qsl("acidic"), qsl("bleeding")}, 0.4, 0.4, 0.4, 1.8, 2.0},
+            {{qsl("sparkle"), qsl("magic"), qsl("arcane"), qsl("energy"), qsl("energized"), qsl("silver"), qsl("silvered")}, 0.6, 1.2, 0.6, 1.4, 2.0},
+            {{qsl("fumes"), qsl("poison"), qsl("poisonous"), qsl("toxic"), qsl("diseased")}, 1.2, 1.4, 1.2, 1.2, 2.5},
+            {{qsl("streak"), qsl("drain"), qsl("draining"), qsl("manadrain")}, 0.6, 2.0, 5.0, 0.6, 1.5},
+            {{qsl("shadow"), qsl("darkness"), qsl("unholy")}, 1.3, 1.4, 1.3, 1.3, 3.0},
+            {{qsl("rays"), qsl("light"), qsl("radiant")}, 3.5, 3.5, 3.5, 3.5, 3.0},
+            {{qsl("sway"), qsl("wind"), qsl("gusting")}, 2.0, 1.0, 3.0, 1.0, 2.0},
+            {{qsl("ripple"), qsl("water"), qsl("drenching")}, 1.2, 1.5, 1.2, 1.5, 2.5},
+            {{qsl("vine"), qsl("vines"), qsl("wood"), qsl("overgrown")}, 0.8, 0.2, 0.8, 0.7, 4.0},
+            {{qsl("dust"), qsl("earth"), qsl("earthen")}, 0.6, 0.6, 0.6, 1.8, 2.0},
+            {{qsl("needles"), qsl("piercing"), qsl("nonormal")}, 1.0, 2.2, 2.0, 1.2, 1.5},
+            {{qsl("impact"), qsl("physical"), qsl("normal")}, 3.5, 3.0, 3.5, 3.0, 1.5},
+            {{qsl("waves"), qsl("sound"), qsl("sonic"), qsl("soundwaves")}, 2.2, 1.4, 2.2, 1.4, 2.0},
+            {{qsl("warp"), qsl("mental"), qsl("psionic")}, 0.8, 0.8, 0.8, 0.8, 2.0},
     }};
     return table;
 }
@@ -1261,6 +1101,11 @@ QString TTextEffect::nameForKind(const int kind)
     return (kind > None && kind < KindCount) ? kinds()[kind].names.first() : qsl("none");
 }
 
+qreal TTextEffect::loopLength(const int kind)
+{
+    return (kind > None && kind < KindCount) ? kinds()[kind].loop : 0.0;
+}
+
 QMargins TTextEffect::reach(const int kind, const int fontHeight)
 {
     if (kind <= None || kind >= KindCount) {
@@ -1276,74 +1121,56 @@ void TTextEffect::paint(QPainter& painter, const int kind, const Span& span, con
         return;
     }
     switch (kind) {
-    case Lifedrain:
-        paintLifedrain(painter, span, seconds);
+    case Bolt:
+        paintBolt(painter, span, seconds);
         break;
-    case Lightning:
-        paintLightning(painter, span, seconds);
+    case Flame:
+        paintFlame(painter, span, seconds);
         break;
-    case Fire:
-        paintFire(painter, span, seconds);
+    case Frost:
+        paintFrost(painter, span, seconds);
         break;
-    case Cold:
-        paintCold(painter, span, seconds);
+    case Drip:
+        paintDrip(painter, span, seconds);
         break;
-    case Acid:
-        paintAcid(painter, span, seconds);
+    case Sparkle:
+        paintSparkle(painter, span, seconds);
         break;
-    case Magic:
-        paintMagic(painter, span, seconds);
+    case Fumes:
+        paintFumes(painter, span, seconds);
         break;
-    case Poison:
-        paintPoison(painter, span, seconds);
+    case Shadow:
+        paintShadow(painter, span, seconds);
         break;
-    case Drain:
-        paintDrain(painter, span, seconds, QColor(235, 45, 45));
+    case Streak:
+        paintStreak(painter, span, seconds);
         break;
-    case Darkness:
-        paintDarkness(painter, span, seconds);
+    case Rays:
+        paintRays(painter, span, seconds);
         break;
-    case Light:
-        paintLight(painter, span, seconds);
+    case Sway:
+        paintSway(painter, span, seconds);
         break;
-    case Wind:
-        paintWind(painter, span, seconds);
+    case Ripple:
+        paintRipple(painter, span, seconds);
         break;
-    case Water:
-        paintWater(painter, span, seconds);
+    case Vine:
+        paintVine(painter, span, seconds);
         break;
-    case Energy:
-        paintEnergy(painter, span, seconds);
+    case Dust:
+        paintDust(painter, span, seconds);
         break;
-    case ManaDrain:
-        paintDrain(painter, span, seconds, blend(span.color, QColor(170, 170, 255), 0.5));
+    case Needles:
+        paintNeedles(painter, span, seconds);
         break;
-    case Wood:
-        paintWood(painter, span, seconds);
+    case Impact:
+        paintImpact(painter, span, seconds);
         break;
-    case Earth:
-        paintEarth(painter, span, seconds);
+    case Waves:
+        paintWaves(painter, span, seconds);
         break;
-    case Toxic:
-        paintToxic(painter, span, seconds);
-        break;
-    case Silver:
-        paintSilver(painter, span, seconds);
-        break;
-    case Piercing:
-        paintPiercing(painter, span, seconds);
-        break;
-    case Physical:
-        paintPhysical(painter, span, seconds);
-        break;
-    case Bleeding:
-        paintBleeding(painter, span, seconds);
-        break;
-    case Sound:
-        paintSound(painter, span, seconds);
-        break;
-    case Mental:
-        paintMental(painter, span, seconds);
+    case Warp:
+        paintWarp(painter, span, seconds);
         break;
     default:
         break;

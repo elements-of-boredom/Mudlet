@@ -436,6 +436,9 @@ public:
     bool deleteLines(int from, int to);
     bool applyAttribute(const QPoint& P_begin, const QPoint& P_end, const TChar::AttributeFlags attributes, const bool state);
     bool applyEffect(const QPoint& P_begin, const QPoint& P_end, int effect);
+    // When the run of effect text starting at grapheme run 'run' of 'line' was first painted, from
+    // TTextEffect::seconds(); every view of this buffer shares it, so scrolling back does not replay it
+    qreal textEffectStart(int line, int run, qreal now);
     bool applyLink(const QPoint& P_begin, const QPoint& P_end, const QStringList& linkFunction, const QStringList& linkHist, QVector<int> luaReference = QVector<int>());
     bool applyFgColor(const QPoint&, const QPoint&, const QColor&);
     bool applyBgColor(const QPoint&, const QPoint&, const QColor&);
@@ -546,6 +549,8 @@ private:
     QSet<int> mLinkIdsRemovedSinceSweep;
     qint64 mLinesRemovedTotal = 0;
     QHash<int, qint64> mLinkIdIssuedAtLine;
+    // Keyed by mLinesRemovedTotal + line, so the trimming of old lines does not move them
+    QHash<qint64, qreal> mTextEffectStarts;
     bool linkHoldsState(const int id) const;
     QSet<int> collectLiveLinkIdsResettingIssueLines();
     void dropStateOfRemovedLinks();

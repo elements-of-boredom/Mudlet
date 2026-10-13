@@ -9590,6 +9590,18 @@ int TLuaInterpreter::setConfig(lua_State* L)
         host.setEnableBlinkText(getVerifiedBool(L, __func__, 2, "value"));
         return success();
     }
+    if (key == qsl("enableTextEffects")) {
+        host.setTextEffectsEnabled(getVerifiedBool(L, __func__, 2, "value"));
+        return success();
+    }
+    if (key == qsl("textEffectLoops")) {
+        const int loops = getVerifiedInt(L, __func__, 2, "value");
+        if (loops < 0) {
+            return warnArgumentValue(L, __func__, qsl("textEffectLoops must be 0 (forever) or more, got %1").arg(loops));
+        }
+        host.setTextEffectLoops(loops);
+        return success();
+    }
 
     // Handle experiment keys
     if (key.startsWith(qsl("experiment."))) {
@@ -10014,6 +10026,14 @@ int TLuaInterpreter::getConfig(lua_State* L)
             {qsl("enableBlinkText"),
              [&]() {
                  lua_pushboolean(L, host.getEnableBlinkText());
+             }},
+            {qsl("enableTextEffects"),
+             [&]() {
+                 lua_pushboolean(L, host.getTextEffectsEnabled());
+             }},
+            {qsl("textEffectLoops"),
+             [&]() {
+                 lua_pushinteger(L, host.getTextEffectLoops());
              }},
             {qsl("showUpperLowerLevels"),
              [&]() {

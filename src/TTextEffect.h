@@ -35,33 +35,7 @@ class TTextEffect
 {
 public:
     // Stored in five bits of TChar (TChar::EffectMask), so at most 31 besides None
-    enum Kind {
-        None = 0,
-        Lifedrain,
-        Lightning,
-        Fire,
-        Cold,
-        Acid,
-        Magic,
-        Poison,
-        Drain,
-        Darkness,
-        Light,
-        Wind,
-        Water,
-        Energy,
-        ManaDrain,
-        Wood,
-        Earth,
-        Toxic,
-        Silver,
-        Piercing,
-        Physical,
-        Bleeding,
-        Sound,
-        Mental,
-        KindCount
-    };
+    enum Kind { None = 0, Bolt, Flame, Frost, Drip, Sparkle, Fumes, Streak, Shadow, Rays, Sway, Ripple, Vine, Dust, Needles, Impact, Waves, Warp, KindCount };
 
     struct Letter
     {
@@ -85,13 +59,13 @@ public:
     static QString nameForKind(int kind);
     // How far past the text it decorates an effect paints
     static QMargins reach(int kind, int fontHeight);
+    static qreal loopLength(int kind);
     static void paint(QPainter& painter, int kind, const Span& span, qreal seconds);
     // One clock for every console, so that two views of the same text animate in step
     static qreal seconds();
 
 private:
-    static void paintLifedrain(QPainter& painter, const Span& text, qreal seconds);
-    static void paintLightning(QPainter& painter, const Span& text, qreal seconds);
+    static void paintBolt(QPainter& painter, const Span& text, qreal seconds);
 };
 
 #endif // MUDLET_TTEXTEFFECT_H

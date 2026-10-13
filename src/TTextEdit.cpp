@@ -157,6 +157,9 @@ TTextEdit::TTextEdit(TConsole* pC, QWidget* pW, TBuffer* pB, Host* pH, bool isLo
 
     connect(mpHost, &Host::signal_changeIsAmbigousWidthGlyphsToBeWide, this, &TTextEdit::slot_changeIsAmbigousWidthGlyphsToBeWide, Qt::UniqueConnection);
     connect(mpHost, &Host::signal_changeEnableBlinkText, this, &TTextEdit::slot_changeEnableBlinkText, Qt::UniqueConnection);
+    connect(mpHost, &Host::signal_changeTextEffects, this, [this]() {
+        update();
+    });
 }
 
 TTextEdit::~TTextEdit()
@@ -1656,6 +1659,12 @@ void TTextEdit::drawForeground(QPainter& painter, const QRect& r)
 void TTextEdit::paintTextEffects(QPainter& painter)
 {
     QRegion region;
+    if (!mpHost->getTextEffectsEnabled()) {
+        mEffectRegion = region;
+        mpEffectTimer->stop();
+        return;
+    }
+    const int loops = mpHost->getTextEffectLoops();
     const qreal now = TTextEffect::seconds();
     const int lineOffset = imageTopLine();
     const TChar timeStampStyle = timeStampCharStyle();
@@ -1697,8 +1706,22 @@ void TTextEdit::paintTextEffects(QPainter& painter)
                         span.letters.push_back({run.textRect, run.grapheme.toString()});
                     }
                 }
-                TTextEffect::paint(painter, kind, span, now);
-                region += span.rect.marginsAdded(TTextEffect::reach(kind, mFontHeight));
+                qreal seconds = now;
+                qreal remaining = 1.0;
+                if (loops > 0) {
+                    seconds = now - mpBuffer->textEffectStart(lineNumber, first, now);
+                    remaining = loops * TTextEffect::loopLength(kind) - seconds;
+                }
+                constexpr qreal fadeOut = 0.5;
+                if (remaining > 0.0) {
+                    painter.setOpacity(std::min(1.0, remaining / fadeOut));
+                    TTextEffect::paint(painter, kind, span, seconds);
+                    painter.setOpacity(1.0);
+                }
+                // A little past the end, so that a repaint wipes the last faded frame
+                if (remaining > -fadeOut) {
+                    region += span.rect.marginsAdded(TTextEffect::reach(kind, mFontHeight));
+                }
             }
             first = last + 1;
         }
