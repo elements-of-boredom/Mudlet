@@ -587,6 +587,7 @@ public:
     static int hideToolBar(lua_State*);
     static int loadReplay(lua_State*);
     static int setBold(lua_State*);
+    static int setTextEffect(lua_State*);
     static int setItalics(lua_State*);
     static int setReverse(lua_State*);
     static int setOverline(lua_State*);

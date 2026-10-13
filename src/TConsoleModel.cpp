@@ -273,6 +273,7 @@ void TConsoleModel::resetFormat()
     deselect();
     mFormatCurrent.setColors(mFgColor, mBgColor);
     mFormatCurrent.setAllDisplayAttributes(TChar::None);
+    mFormatCurrent.setEffect(0);
 }
 
 bool TConsoleModel::setSelectionBgColor(const QColor& newColor)
@@ -289,7 +290,7 @@ bool TConsoleModel::setSelectionFgColor(const QColor& newColor)
 
 void TConsoleModel::print(const QString& msg)
 {
-    buffer.append(msg, 0, msg.size(), mFormatCurrent.foreground(), mFormatCurrent.background(), mFormatCurrent.allDisplayAttributes());
+    buffer.append(msg, 0, msg.size(), mFormatCurrent.foreground(), mFormatCurrent.background(), mFormatCurrent.writtenAttributes());
     mirrorToStdOut(msg);
 }
 
@@ -409,6 +410,12 @@ bool TConsoleModel::setSelectionDisplayAttributes(const TChar::AttributeFlags at
     return buffer.applyAttribute(P_begin, P_end, attributes, enabled);
 }
 
+bool TConsoleModel::setSelectionEffect(const int effect)
+{
+    mFormatCurrent.setEffect(effect);
+    return buffer.applyEffect(P_begin, P_end, effect);
+}
+
 bool TConsoleModel::setLink(const QStringList& commands, const QStringList& hints, const QVector<int>& luaReferences)
 {
     return buffer.applyLink(P_begin, P_end, commands, hints, luaReferences);
@@ -482,10 +489,10 @@ bool TConsoleModel::echo(QString& text)
             QPoint insertPoint(buffer.lineBuffer.at(y).size(), y);
             buffer.insertInLine(insertPoint, text, mFormatCurrent);
         } else {
-            buffer.appendLine(text, 0, text.size() - 1, mFormatCurrent.foreground(), mFormatCurrent.background(), mFormatCurrent.allDisplayAttributes());
+            buffer.appendLine(text, 0, text.size() - 1, mFormatCurrent.foreground(), mFormatCurrent.background(), mFormatCurrent.writtenAttributes());
         }
     } else {
-        buffer.append(text, 0, text.size(), mFormatCurrent.foreground(), mFormatCurrent.background(), mFormatCurrent.allDisplayAttributes());
+        buffer.append(text, 0, text.size(), mFormatCurrent.foreground(), mFormatCurrent.background(), mFormatCurrent.writtenAttributes());
         appended = true;
     }
     buffer.mEchoingText = false;

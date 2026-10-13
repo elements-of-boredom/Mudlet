@@ -362,6 +362,7 @@ public:
     bool setWindowFgColor(const QString& name, const QColor& color);
     bool setWindowBgColor(const QString& name, const QColor& color);
     bool setWindowDisplayAttributes(const QString& name, TChar::AttributeFlags attributes, bool enabled);
+    bool setWindowTextEffect(const QString& name, int effect);
     // Whether the named console shows timestamps. The buffer records every
     // line's time either way.
     std::optional<bool> getWindowTimeStamps(const QString& name);

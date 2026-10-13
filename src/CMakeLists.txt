@@ -161,6 +161,7 @@ set(mudlet_SRCS
     TSpellChecker.cpp
     TStringUtils.cpp
     TTextCodec.cpp
+    TTextEffect.cpp
     TTimer.cpp
     TTrigger.cpp
     TVar.cpp
@@ -464,6 +465,7 @@ set(mudlet_HDRS
     TSpellChecker.h
     TStringUtils.h
     TTextCodec.h
+    TTextEffect.h
     TTextProperties.h
     TTimer.h
     TTrigger.h

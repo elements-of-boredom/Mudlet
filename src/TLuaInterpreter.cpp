@@ -6749,6 +6749,7 @@ void TLuaInterpreter::initLuaGlobals()
     lua_register(pGlobalLua, "loadRawFile", TLuaInterpreter::loadReplay);
     lua_register(pGlobalLua, "loadReplay", TLuaInterpreter::loadReplay);
     lua_register(pGlobalLua, "setBold", TLuaInterpreter::setBold);
+    lua_register(pGlobalLua, "setTextEffect", TLuaInterpreter::setTextEffect);
     lua_register(pGlobalLua, "setItalics", TLuaInterpreter::setItalics);
     lua_register(pGlobalLua, "setOverline", TLuaInterpreter::setOverline);
     lua_register(pGlobalLua, "setReverse", TLuaInterpreter::setReverse);

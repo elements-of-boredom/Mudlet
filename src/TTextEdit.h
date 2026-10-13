@@ -264,6 +264,9 @@ private:
     void paintBackgrounds(QPainter&, const LineLayout&, const QRect& cleared = QRect(), const QColor& clearedTo = QColor()) const;
     // Returns the y just below the deepest ink it painted.
     int paintForegrounds(QPainter&, TGlyphCache&, const LineLayout&, const QRect& clip = QRect()) const;
+    // Drawn straight onto the widget, never into the cached screen, so that a
+    // frame of animation does not have to repaint the text beneath it
+    void paintTextEffects(QPainter&);
     void drawCustomDecorations(QPainter&, const QColor&, const QRect&, const TChar&) const;
     int layoutGrapheme(LineLayout& layout, const QPoint& cursor, QStringView grapheme, const int column, const int line, const TChar& charStyle) const;
     void resolveRunColors(GraphemeRun&, const TChar&, bool caretIsHere) const;
@@ -341,6 +344,11 @@ private:
     // Maximum of one repaint per csmPaintPaceMs is allowed via scheduleUpdate().
     static constexpr int csmPaintPaceMs = 16; // ~60 fps cap
     QTimer* mpPaintPacer = nullptr;
+    // Runs while any text with a TTextEffect is on screen
+    QTimer* mpEffectTimer = nullptr;
+    // What the last paint's effects covered, which the next frame repaints
+    QRegion mEffectRegion;
+    LineLayout mEffectLineLayout;
     // Restarted by each paintEvent(), so scheduleUpdate() can tell how much of
     // the current frame's window is left.
     QElapsedTimer mSincePaint;

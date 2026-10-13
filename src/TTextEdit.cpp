@@ -38,6 +38,7 @@
 #include "TGlyphCache.h"
 #include "THyperlinkSelectionManager.h"
 #include "THyperlinkVisibilityManager.h"
+#include "TTextEffect.h"
 #include "mudlet.h"
 #include "MudletApp.h"
 #include "TMainConsole.h"
@@ -137,6 +138,17 @@ TTextEdit::TTextEdit(TConsole* pC, QWidget* pW, TBuffer* pB, Host* pH, bool isLo
             update(mPendingPaintRegion);
             mPendingPaintRegion = QRegion();
         }
+    });
+
+    mpEffectTimer = new QTimer(this);
+    mpEffectTimer->setInterval(33ms);
+    connect(mpEffectTimer, &QTimer::timeout, this, [this]() {
+        // A hidden pane gets no paint to find that its effects are gone
+        if (!isVisible() || mEffectRegion.isEmpty()) {
+            mpEffectTimer->stop();
+            return;
+        }
+        update(mEffectRegion);
     });
 
     showNewLines();
@@ -1641,6 +1653,65 @@ void TTextEdit::drawForeground(QPainter& painter, const QRect& r)
     }
 }
 
+void TTextEdit::paintTextEffects(QPainter& painter)
+{
+    QRegion region;
+    const qreal now = TTextEffect::seconds();
+    const int lineOffset = imageTopLine();
+    const TChar timeStampStyle = timeStampCharStyle();
+    // One row more than fits, as drawForeground() shows part of it
+    for (int row = 0; row <= mScreenHeight; ++row) {
+        const int lineNumber = lineOffset + row;
+        if (!hasBufferLine(lineNumber)) {
+            break;
+        }
+        const auto& line = mpBuffer->buffer.at(lineNumber);
+        if (std::none_of(line.cbegin(), line.cend(), [](const TChar& c) {
+                return c.effect() != TTextEffect::None;
+            })) {
+            continue;
+        }
+        layoutLine(lineNumber, row, timeStampStyle, mEffectLineLayout);
+        const auto total = static_cast<int>(mEffectLineLayout.size());
+        for (int first = 0; first < total;) {
+            const GraphemeRun& start = mEffectLineLayout.at(first);
+            const int kind = start.style ? start.style->effect() : TTextEffect::None;
+            int last = first;
+            while (last + 1 < total) {
+                const TChar* next = mEffectLineLayout.at(last + 1).style;
+                if (!next || next->effect() != kind) {
+                    break;
+                }
+                ++last;
+            }
+            if (kind != TTextEffect::None) {
+                TTextEffect::Span span;
+                span.color = start.fgColor;
+                span.background = start.bgColor;
+                span.font = font();
+                span.seed = static_cast<quint32>(lineNumber) * 0x9e3779b9U + static_cast<quint32>(first);
+                for (int i = first; i <= last; ++i) {
+                    const GraphemeRun& run = mEffectLineLayout.at(i);
+                    span.rect = span.rect.united(run.textRect);
+                    if (!run.textRect.isNull() && !run.rightHalf) {
+                        span.letters.push_back({run.textRect, run.grapheme.toString()});
+                    }
+                }
+                TTextEffect::paint(painter, kind, span, now);
+                region += span.rect.marginsAdded(TTextEffect::reach(kind, mFontHeight));
+            }
+            first = last + 1;
+        }
+    }
+    mEffectLineLayout.clear();
+    mEffectRegion = region & rect();
+    if (mEffectRegion.isEmpty()) {
+        mpEffectTimer->stop();
+    } else if (!mpEffectTimer->isActive()) {
+        mpEffectTimer->start();
+    }
+}
+
 QSize TTextEdit::smallestEnclosingSurfaceSize(const int screenWidth, const int fontWidth, const int pixmapHeight, const qreal devicePixelRatio)
 {
     return QSize(qCeil(screenWidth * fontWidth * devicePixelRatio), qCeil(pixmapHeight * devicePixelRatio));
@@ -1717,6 +1788,7 @@ void TTextEdit::paintEvent(QPaintEvent* e)
     }
     painter.setFont(font());
     drawForeground(painter, rect);
+    paintTextEffects(painter);
     painter.end();
 
     // Takes effect from the next frame, as this one's background was settled

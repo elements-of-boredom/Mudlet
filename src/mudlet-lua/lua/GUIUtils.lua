@@ -1202,11 +1202,11 @@ end
 _Echos = {
   Patterns = {
     Hex = {
-      rex.new [[(\x5c?(?:#|\|c)?(?:[0-9a-fA-F]{6}|(?:#,|\|c,)[0-9a-fA-F]{6,8})(?:,[0-9a-fA-F]{6,8})?)|(?:\||#)(\/?[biruso])]],
+      rex.new [[(\x5c?(?:#|\|c)?(?:[0-9a-fA-F]{6}|(?:#,|\|c,)[0-9a-fA-F]{6,8})(?:,[0-9a-fA-F]{6,8})?)|(?:\||#)(\/?[biruso]|fx\([a-zA-Z_]+\)|\/fx)]],
       rex.new [[(?:#|\|c)(?:([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2}))?(?:,([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})?)?]],
     },
     Decimal = {
-      rex.new [[(<[0-9,:]+>)|<(/?[biruso])>]],
+      rex.new [[(<[0-9,:]+>)|<(/?[biruso]|fx:[a-zA-Z_]+|/fx)>]],
       rex.new [[<(?:([0-9]{1,3}),([0-9]{1,3}),([0-9]{1,3}))?(?::(?=>))?(?::([0-9]{1,3}),([0-9]{1,3}),([0-9]{1,3}),?([0-9]{1,3})?)?>]],
     },
     Color = {
@@ -1260,6 +1260,11 @@ _Echos = {
         t[#t + 1] = "\27overline"
       elseif r == "/o" then
         t[#t + 1] = "\27overlineoff"
+      elseif r == "/fx" then
+        t[#t + 1] = "\27fxoff"
+      elseif r and r:find("^fx[:(]") then
+        -- hecho has no closing bracket to end a name, so writes it fx(name)
+        t[#t + 1] = "\27fx:" .. r:match("^fx[:(]([%a_]+)")
       end
       if c then
         if style == 'Hex' or style == 'Decimal' then
@@ -1327,6 +1332,10 @@ _Echos = {
             t[#t + 1] = "\27overline"
           elseif c == "</o>" then
             t[#t + 1] = "\27overlineoff"
+          elseif c == "</fx>" then
+            t[#t + 1] = "\27fxoff"
+          elseif c:match("^<fx:[%a_]+>$") then
+            t[#t + 1] = "\27" .. c:sub(2, -2)
           else
             local fcolor, bcolor = c:match("^<([%w_]+)>$")
             if not fcolor then
@@ -1412,6 +1421,9 @@ local processedEchoToHTML = function(t, reset)
     elseif v == "\27reset" then
       format = table.deepcopy(reset)
       formatChanged = true
+    elseif type(v) == "string" and v:find("^\27fx") then
+      -- labels cannot animate text, so the effect is dropped
+      v = ""
     end
     parts[i + 1] = formatChanged and getHTMLformat(format) or v
   end
@@ -1561,6 +1573,10 @@ function xEcho(style, func, ...)
         setOverline(win, true)
       elseif v == "\27overlineoff" then
         setOverline(win, false)
+      elseif v == "\27fxoff" then
+        setTextEffect(win, "none")
+      elseif v:sub(1, 4) == "\27fx:" then
+        setTextEffect(win, v:sub(5))
       elseif v == "\27reset" then
         resetFormat(win)
       else

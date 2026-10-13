@@ -48,6 +48,7 @@
 #include "TMapLabel.h"
 #include "TMedia.h"
 #include "TRoomDB.h"
+#include "TTextEffect.h"
 #include "TTimer.h"
 #include "mapInfoContributorManager.h"
 
@@ -1890,6 +1891,10 @@ int TLuaInterpreter::getTextFormat(lua_State* L)
     lua_pushinteger(L, result.second.alternateFont());
     lua_settable(L, -3);
 
+    lua_pushstring(L, "effect");
+    lua_pushstring(L, TTextEffect::nameForKind(result.second.effect()).toUtf8().constData());
+    lua_settable(L, -3);
+
     const QColor foreground(result.second.foreground());
     lua_pushstring(L, "foreground");
     lua_newtable(L);
@@ -3024,6 +3029,27 @@ int TLuaInterpreter::setBold(lua_State* L)
     const bool isAttributeEnabled = getVerifiedBool(L, __func__, s, "enable bold attribute");
     const QString consoleName{windowName};
     if (!getHostFromLua(L).setWindowDisplayAttributes(consoleName, TChar::Bold, isAttributeEnabled)) {
+        return windowNotFound(L, consoleName);
+    }
+    lua_pushboolean(L, true);
+    return 1;
+}
+
+// Documentation: https://wiki.mudlet.org/w/Manual:Lua_Functions#setTextEffect
+int TLuaInterpreter::setTextEffect(lua_State* L)
+{
+    const char* windowName = "";
+    int s = 1;
+    if (lua_gettop(L) > 1) { // Have more than one argument so first must be a console name
+        windowName = WINDOW_NAME(L, s++);
+    }
+    const QString effectName = getVerifiedString(L, __func__, s, "effect name");
+    const int effect = TTextEffect::kindFromName(effectName);
+    if (effect < 0) {
+        return warnArgumentValue(L, __func__, qsl("'%1' is not a known text effect").arg(effectName));
+    }
+    const QString consoleName{windowName};
+    if (!getHostFromLua(L).setWindowTextEffect(consoleName, effect)) {
         return windowNotFound(L, consoleName);
     }
     lua_pushboolean(L, true);

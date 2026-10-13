@@ -2577,6 +2577,18 @@ bool Host::setWindowDisplayAttributes(const QString& name, const TChar::Attribut
     return true;
 }
 
+bool Host::setWindowTextEffect(const QString& name, const int effect)
+{
+    auto pModel = consoleModelNamed(name);
+    if (!pModel) {
+        return false;
+    }
+    if (pModel->setSelectionEffect(effect)) {
+        markSelectionDirty(*pModel);
+    }
+    return true;
+}
+
 std::optional<bool> Host::getWindowTimeStamps(const QString& name)
 {
     auto pModel = consoleModelNamed(name);
@@ -5857,7 +5869,7 @@ bool Host::echoWindow(const QString& name, const QString& text)
     // Not consoleModelNamed(): echoUserWindow() does not take "main" or "" for the main console.
     if (auto pModel = mWindowRegistry.subConsoleModel(name)) {
         const TChar& format = pModel->mFormatCurrent;
-        pModel->buffer.append(text, 0, text.size(), format.foreground(), format.background(), format.allDisplayAttributes());
+        pModel->buffer.append(text, 0, text.size(), format.foreground(), format.background(), format.writtenAttributes());
         emit pModel->mNotifier.newLinesWritten();
         pModel->mirrorToStdOut(text);
         return true;

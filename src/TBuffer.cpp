@@ -6972,6 +6972,25 @@ bool TBuffer::applyAttribute(const QPoint& P_begin, const QPoint& P_end, const T
     return false;
 }
 
+bool TBuffer::applyEffect(const QPoint& P_begin, const QPoint& P_end, const int effect)
+{
+    const int x1 = P_begin.x();
+    const int x2 = P_end.x();
+    const int y1 = P_begin.y();
+    const int y2 = P_end.y();
+    if (x1 < 0 || (x2 <= x1 && y2 <= y1) || y2 < 0 || y2 >= static_cast<int>(buffer.size()) || x1 >= static_cast<int>(buffer[y1].size())) {
+        return false;
+    }
+    for (int y = y1; y <= y2; ++y) {
+        auto& line = buffer.at(y);
+        const int end = (y == y2) ? std::min(x2, static_cast<int>(line.size())) : static_cast<int>(line.size());
+        for (int x = (y == y1) ? x1 : 0; x < end; ++x) {
+            line.at(x).setEffect(effect);
+        }
+    }
+    return true;
+}
+
 bool TBuffer::applyFgColor(const QPoint& P_begin, const QPoint& P_end, const QColor& newColor)
 {
     const int x1 = P_begin.x();

@@ -209,6 +209,7 @@ struct TConsoleModel
     bool setSelectionFgColor(const QColor& newColor);
     bool setSelectionBgColor(const QColor& newColor);
     bool setSelectionDisplayAttributes(TChar::AttributeFlags attributes, bool enabled);
+    bool setSelectionEffect(int effect);
     // Makes the selected run a link, taking over the commands' Lua registry references.
     bool setLink(const QStringList& commands, const QStringList& hints, const QVector<int>& luaReferences);
 

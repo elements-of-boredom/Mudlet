@@ -141,7 +141,10 @@ public:
         // Replaces TCHAR_ECHO 16
         Echo = 0x200000,              // 0000 0000 0010 0000 0000 0000 0000 0000
         // In the showing console's selection. Not a display attribute (outside TestMask); dropped by the copy constructor:
-        Selected = 0x2000000          // 0000 0010 0000 0000 0000 0000 0000 0000
+        Selected = 0x2000000,         // 0000 0010 0000 0000 0000 0000 0000 0000
+        // A TTextEffect::Kind in five bits. Painted over the text rather than as
+        // part of it, so outside TestMask like the internal flags above:
+        EffectMask = 0x7C000000       // 0111 1100 0000 0000 0000 0000 0000 0000
     };
     // clang-format on
     Q_DECLARE_FLAGS(AttributeFlags, AttributeFlag)
@@ -235,9 +238,13 @@ public:
     QRgb foregroundRgba() const { return mFgColor; }
     QRgb backgroundRgba() const { return mBgColor; }
     AttributeFlags allDisplayAttributes() const { return mFlags & TestMask; }
+    // What text written in this format carries: the display attributes and the effect
+    AttributeFlags writtenAttributes() const { return mFlags & (TestMask | EffectMask); }
     void select() { mFlags |= Selected; }
     void deselect() { mFlags &= ~Selected; }
     bool isSelected() const { return mFlags & Selected; }
+    int effect() const { return (mFlags.toInt() & EffectMask) >> csmEffectShift; }
+    void setEffect(const int effect) { mFlags = AttributeFlags::fromInt((mFlags.toInt() & ~EffectMask) | ((effect << csmEffectShift) & EffectMask)); }
     int linkIndex() const { return mLinkIndex; }
     bool isBold() const { return mFlags & Bold; }
     bool isItalic() const { return mFlags & Italic; }
@@ -336,6 +343,7 @@ public:
     }
 
 private:
+    static constexpr int csmEffectShift = 26;
     // One per scrollback character, so QRgb rather than 16-byte QColors; the text pipeline's colors are
     // all 8-bit RGB, which QRgb holds exactly.
     QRgb mFgColor = 0;
@@ -427,6 +435,7 @@ public:
     bool deleteLine(int);
     bool deleteLines(int from, int to);
     bool applyAttribute(const QPoint& P_begin, const QPoint& P_end, const TChar::AttributeFlags attributes, const bool state);
+    bool applyEffect(const QPoint& P_begin, const QPoint& P_end, int effect);
     bool applyLink(const QPoint& P_begin, const QPoint& P_end, const QStringList& linkFunction, const QStringList& linkHist, QVector<int> luaReference = QVector<int>());
     bool applyFgColor(const QPoint&, const QPoint&, const QColor&);
     bool applyBgColor(const QPoint&, const QPoint&, const QColor&);
